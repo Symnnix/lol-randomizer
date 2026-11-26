@@ -129,7 +129,21 @@
     transition: border-color .12s, box-shadow .12s;
   }
 
+  /* Für Bilder mit fit "contain": unscharfe Kopie des Bildes füllt den freien Rand */
+  .ring::before {
+    content: "";
+    position: absolute;
+    inset: -15%;
+    background: var(--fill, none) center / cover no-repeat;
+    filter: blur(calc(var(--map-size) * .006)) grayscale(1) brightness(.35);
+    transition: filter .12s;
+  }
+  .role.hl .ring::before, .role.first .ring::before, .role.second .ring::before {
+    filter: blur(calc(var(--map-size) * .006)) brightness(.7);
+  }
+
   .ring img {
+    position: relative;  /* liegt über der unscharfen Füllung */
     width: 100%;
     height: 100%;
     display: block;
@@ -416,11 +430,12 @@ const TIMING = {
 
 // Bilder pro Rolle: Bei jedem Roll zeigt jeder Kreis zufällig eins davon.
 // "pos" ist optional und legt den Ausschnitt (object-position) für genau dieses Bild fest.
+// fit: 'contain' zeigt das ganze Bild (rausgezoomt), der freie Rand wird unscharf aufgefüllt.
 // Neues Bild: Datei nach assets/ legen und hier eintragen. Fehlende Dateien werden übersprungen.
 const IMAGES = {
   top: [
     { src: 'assets/top-1.jpg' },
-    { src: 'assets/top-2.webp',    pos: '50% 0%' }
+    { src: 'assets/top-2.webp',    pos: '20% 50%', fit: 'contain' }
   ],
   jungle: [
     { src: 'assets/jungle-1.webp', pos: '90% 50%' },
@@ -519,7 +534,30 @@ function showRandomImage(role) {
   const entry = pickRandom(list);
   const img = imgEls[role];
   img.style.objectPosition = entry.pos || '';
-  if (img.getAttribute('src') !== entry.src) img.src = entry.src;
+  img.style.objectFit = entry.fit || '';
+  if (entry.fit === 'contain') img.parentElement.style.setProperty('--fill', `url("${entry.src}")`);
+  else img.parentElement.style.removeProperty('--fill');
+  const changed = img.getAttribute('src') !== entry.src;
+  if (changed) img.src = entry.src;
+  if (!changed || !entry.fit) fadeEdges(img);  // sonst nach dem Laden
+}
+
+// Bei fit 'contain': Bildkanten weich in die unscharfe Füllung auslaufen lassen
+function fadeEdges(img) {
+  const ratio = img.naturalWidth / img.naturalHeight;
+  if (img.style.objectFit !== 'contain' || !ratio || ratio === 1) {
+    img.style.maskImage = img.style.webkitMaskImage = '';
+    return;
+  }
+  const portrait = ratio < 1;
+  const size = (portrait ? ratio : 1 / ratio) * 100;              // Bildbreite bzw. -höhe in %
+  const [px, py] = getComputedStyle(img).objectPosition.split(' ').map(parseFloat);
+  const start = (100 - size) * (portrait ? px : py) / 100;        // wo das Bild anfängt, in %
+  const end = start + size;
+  const soft = size * .1;                                          // Breite des Übergangs
+  const mask = `linear-gradient(${portrait ? 'to right' : 'to bottom'}, transparent ${start}%, ` +
+               `#000 ${start + soft}%, #000 ${end - soft}%, transparent ${end}%)`;
+  img.style.maskImage = img.style.webkitMaskImage = mask;
 }
 
 function showRandomImages() {
@@ -533,6 +571,7 @@ for (const r of ROLES) {
     available[r] = available[r].filter(e => e.src !== bad);
     showRandomImage(r);
   });
+  imgEls[r].addEventListener('load', () => fadeEdges(imgEls[r]));
   // Alle Bilder vorladen, damit der Wechsel beim Rollen sofort klappt
   for (const e of IMAGES[r]) {
     const pre = new Image();
