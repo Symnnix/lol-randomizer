@@ -10,7 +10,8 @@
 <style>
   /* ===== Hier anpassen ===== */
   :root {
-    /* Bildausschnitt pro Rolle (object-position: x y) */
+    /* Standard-Bildausschnitt pro Rolle (object-position: x y).
+       Einzelne Bilder können im Skript unter IMAGES einen eigenen Ausschnitt ("pos") bekommen. */
     --pos-top:    50% 45%;
     --pos-jungle: 45% 50%;
     --pos-mid:    50% 50%;
@@ -21,7 +22,7 @@
     --circle: 15%;
 
     /* Karte: so groß wie möglich, Button und Ergebnis passen noch drunter */
-    --map-size: min(92vw, 88vh, calc(100vh - 10.5rem));
+    --map-size: min(92vw, 88vh, calc(100vh - 11rem));
 
     /* Farben im Stil des LoL-Clients */
     --bg-0: #010A13;
@@ -287,7 +288,36 @@
     box-shadow: 0 6px 20px rgba(0, 0, 0, .6);
   }
 
-  /* ----- Ergebniszeile ----- */
+  /* ----- Ergebniszeile und Ton-Schalter ----- */
+  .bottom-row {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: .9rem;
+  }
+  .sound {
+    display: inline-grid;
+    place-items: center;
+    width: 1.9rem;
+    height: 1.9rem;
+    padding: 0;
+    color: var(--gold);
+    background: rgba(1, 10, 19, .7);
+    border: 1px solid var(--gold-dark);
+    border-radius: 50%;
+    cursor: pointer;
+    transition: color .15s, border-color .15s;
+  }
+  .sound:hover { color: var(--gold-text); border-color: var(--gold); }
+  .sound:focus-visible { outline: 2px solid var(--teal); outline-offset: 3px; }
+  .sound svg { width: 1rem; height: 1rem; }
+  .sound .wave, .sound .cross { transition: opacity .15s; }
+  .sound .cross { opacity: 0; }
+  .sound[aria-pressed="false"] { color: var(--grey); }
+  .sound[aria-pressed="false"] .wave { opacity: 0; }
+  .sound[aria-pressed="false"] .cross { opacity: 1; }
+
   .result {
     margin: 0;
     font-size: 1.05rem;
@@ -310,10 +340,10 @@
 <h1>Rollen-Randomizer</h1>
 
 <div class="map" id="map">
-  <!-- onerror direkt am Bild, damit auch sehr schnelle Ladefehler erkannt werden -->
+  <!-- Die Bilder setzt das Skript (zufällig aus IMAGES) -->
   <div class="role" data-role="top">
     <div class="ring">
-      <img src="assets/top.jpg" alt="Top" onerror="this.closest('.role').classList.add('missing')">
+      <img alt="Top">
       <span class="placeholder">TOP</span>
     </div>
     <span class="badge"></span>
@@ -321,7 +351,7 @@
   </div>
   <div class="role" data-role="jungle">
     <div class="ring">
-      <img src="assets/jungle.webp" alt="Jungle" onerror="this.closest('.role').classList.add('missing')">
+      <img alt="Jungle">
       <span class="placeholder">JUNGLE</span>
     </div>
     <span class="badge"></span>
@@ -329,7 +359,7 @@
   </div>
   <div class="role" data-role="mid">
     <div class="ring">
-      <img src="assets/mid.jpg" alt="Mid" onerror="this.closest('.role').classList.add('missing')">
+      <img alt="Mid">
       <span class="placeholder">MID</span>
     </div>
     <span class="badge"></span>
@@ -337,7 +367,7 @@
   </div>
   <div class="role" data-role="adc">
     <div class="ring">
-      <img src="assets/adc.jpg" alt="ADC" onerror="this.closest('.role').classList.add('missing')">
+      <img alt="ADC">
       <span class="placeholder">ADC</span>
     </div>
     <span class="badge"></span>
@@ -345,7 +375,7 @@
   </div>
   <div class="role" data-role="supp">
     <div class="ring">
-      <img src="assets/supp.jpg" alt="Support" onerror="this.closest('.role').classList.add('missing')">
+      <img alt="Support">
       <span class="placeholder">SUPPORT</span>
     </div>
     <span class="badge"></span>
@@ -355,9 +385,19 @@
 
 <button class="play" id="roll" type="button">RANDOMIZE</button>
 
-<p class="result" aria-live="polite">
-  Hauptrolle: <strong id="res-first">–</strong><span class="sep">|</span>Zweitrolle: <strong id="res-second">–</strong>
-</p>
+<div class="bottom-row">
+  <p class="result" aria-live="polite">
+    Hauptrolle: <strong id="res-first">–</strong><span class="sep">|</span>Zweitrolle: <strong id="res-second">–</strong>
+  </p>
+  <button class="sound" id="sound" type="button" aria-pressed="true" aria-label="Ton" title="Ton aus (M)">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <path d="M4 9h4l5-4v14l-5-4H4z" fill="currentColor" stroke="none"/>
+      <path class="wave" d="M16.5 8.5a5 5 0 0 1 0 7"/>
+      <path class="wave" d="M19.5 5.5a9 9 0 0 1 0 13"/>
+      <path class="cross" d="M16.5 9.5l5 5M21.5 9.5l-5 5"/>
+    </svg>
+  </button>
+</div>
 
 <script>
 'use strict';
@@ -372,6 +412,33 @@ const TIMING = {
   minTotalMs: 2000,  // Gesamtdauer eines Rolls (Untergrenze)
   maxTotalMs: 2500,  // Gesamtdauer eines Rolls (Obergrenze)
   pauseMs: 600       // Pause zwischen Haupt- und Zweitrolle
+};
+
+// Bilder pro Rolle: Bei jedem Roll zeigt jeder Kreis zufällig eins davon.
+// "pos" ist optional und legt den Ausschnitt (object-position) für genau dieses Bild fest.
+// Neues Bild: Datei nach assets/ legen und hier eintragen. Fehlende Dateien werden übersprungen.
+const IMAGES = {
+  top: [
+    { src: 'assets/top-1.jpg' },
+    { src: 'assets/top-2.webp',    pos: '50% 0%' }
+  ],
+  jungle: [
+    { src: 'assets/jungle-1.webp', pos: '90% 50%' },
+    { src: 'assets/jungle-2.webp' }
+  ],
+  mid: [
+    { src: 'assets/mid-1.jpg' },
+    { src: 'assets/mid-2.webp' },
+    { src: 'assets/mid-3.webp',    pos: '70% 50%' }
+  ],
+  adc: [
+    { src: 'assets/adc-1.jpg' },
+    { src: 'assets/adc-2.png' }    // nur lokal, liegt nicht auf GitHub
+  ],
+  supp: [
+    { src: 'assets/supp-1.webp',   pos: '50% 5%' },
+    { src: 'assets/supp-2.webp' }
+  ]
 };
 
 // ================= Zufallslogik (kein DOM) =================
@@ -441,6 +508,99 @@ let rolling = false;
 
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
+// ---------- Bilder ----------
+// Noch nutzbare Bilder pro Rolle (Dateien, die nicht laden, fliegen raus)
+const available = Object.fromEntries(ROLES.map(r => [r, IMAGES[r].slice()]));
+const imgEls = Object.fromEntries(ROLES.map(r => [r, roleEls[r].querySelector('.ring img')]));
+
+function showRandomImage(role) {
+  const list = available[role];
+  if (!list.length) { roleEls[role].classList.add('missing'); return; }
+  const entry = pickRandom(list);
+  const img = imgEls[role];
+  img.style.objectPosition = entry.pos || '';
+  if (img.getAttribute('src') !== entry.src) img.src = entry.src;
+}
+
+function showRandomImages() {
+  for (const r of ROLES) showRandomImage(r);
+}
+
+for (const r of ROLES) {
+  // Bild lädt nicht: aus der Liste nehmen und ein anderes zeigen
+  imgEls[r].addEventListener('error', () => {
+    const bad = imgEls[r].getAttribute('src');
+    available[r] = available[r].filter(e => e.src !== bad);
+    showRandomImage(r);
+  });
+  // Alle Bilder vorladen, damit der Wechsel beim Rollen sofort klappt
+  for (const e of IMAGES[r]) {
+    const pre = new Image();
+    pre.onerror = () => { available[r] = available[r].filter(x => x !== e); };
+    pre.src = e.src;
+  }
+}
+
+// ---------- Sound (Web Audio, ohne Sound-Dateien) ----------
+const soundBtn = document.getElementById('sound');
+let soundOn = true;
+let audioCtx = null;
+
+function audio() {
+  if (!soundOn) return null;
+  try {
+    audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+    return audioCtx;
+  } catch (e) {
+    return null;
+  }
+}
+
+// Ein kurzer Ton mit schnellem Ausklingen
+function tone(ctx, freq, start, length, volume, type = 'sine') {
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+  osc.type = type;
+  osc.frequency.setValueAtTime(freq, start);
+  gain.gain.setValueAtTime(0.0001, start);
+  gain.gain.exponentialRampToValueAtTime(volume, start + 0.004);
+  gain.gain.exponentialRampToValueAtTime(0.0001, start + length);
+  osc.connect(gain).connect(ctx.destination);
+  osc.start(start);
+  osc.stop(start + length + 0.02);
+}
+
+// Tick bei jedem Sprung, wird zum Ende hin etwas tiefer
+function playTick(phase, progress) {
+  const ctx = audio();
+  if (!ctx) return;
+  const freq = (phase === 2 ? 1175 : 988) * (1.25 - 0.25 * progress);
+  const t = ctx.currentTime;
+  tone(ctx, freq, t, 0.07, 0.12, 'triangle');
+  tone(ctx, freq * 2, t, 0.03, 0.025, 'square');
+}
+
+// Einrasten: zwei Töne aufwärts
+function playLock(phase) {
+  const ctx = audio();
+  if (!ctx) return;
+  const [a, b] = phase === 2 ? [784, 1175] : [659, 988];
+  const t = ctx.currentTime;
+  tone(ctx, a, t, 0.5, 0.16);
+  tone(ctx, b, t + 0.08, 0.7, 0.14);
+}
+
+function setSound(on) {
+  soundOn = on;
+  soundBtn.setAttribute('aria-pressed', String(on));
+  soundBtn.title = on ? 'Ton aus (M)' : 'Ton an (M)';
+  try { localStorage.setItem('lol-randomizer-sound', on ? '1' : '0'); } catch (e) {}
+}
+
+soundBtn.addEventListener('click', () => setSound(!soundOn));
+try { if (localStorage.getItem('lol-randomizer-sound') === '0') setSound(false); } catch (e) {}
+
 // Highlight auf genau einen Kreis setzen (null = keiner)
 function setHighlight(role) {
   for (const r of ROLES) roleEls[r].classList.toggle('hl', r === role);
@@ -454,11 +614,12 @@ function resetMarks() {
 
 // Spielt einen fertigen Plan ab: erster Kreis sofort, dann immer langsamer.
 // Der letzte Sprung landet auf dem Ergebnis, danach rastet es direkt ein.
-async function playRoll(plan) {
-  setHighlight(plan.sequence[0]);
-  for (let i = 1; i < plan.sequence.length; i++) {
-    await sleep(plan.delays[i - 1]);
+async function playRoll(plan, phase) {
+  const last = plan.sequence.length - 1;
+  for (let i = 0; i <= last; i++) {
+    if (i > 0) await sleep(plan.delays[i - 1]);
     setHighlight(plan.sequence[i]);
+    playTick(phase, i / last);
   }
   setHighlight(null);
 }
@@ -468,22 +629,25 @@ async function randomize() {
   rolling = true;
   button.disabled = true;
   resetMarks();
+  showRandomImages();
 
   // 1. Hauptrolle aus allen 5
   mapEl.dataset.phase = '1';
   const first = planRoll(ROLES);
-  await playRoll(first);
+  await playRoll(first, 1);
   roleEls[first.result].classList.add('first');
   resFirst.textContent = ROLE_NAMES[first.result];
+  playLock(1);
 
   await sleep(TIMING.pauseMs);
 
   // 2. Zweitrolle aus den 4 übrigen
   mapEl.dataset.phase = '2';
   const second = planRoll(ROLES.filter(r => r !== first.result));
-  await playRoll(second);
+  await playRoll(second, 2);
   roleEls[second.result].classList.add('second');
   resSecond.textContent = ROLE_NAMES[second.result];
+  playLock(2);
 
   delete mapEl.dataset.phase;
   rolling = false;
@@ -492,13 +656,18 @@ async function randomize() {
 
 button.addEventListener('click', randomize);
 
-// Leertaste und Enter starten ebenfalls (ohne Doppelauslösung über den Button)
+// Leertaste und Enter starten ebenfalls (ohne Doppelauslösung über den Button), M schaltet den Ton
 document.addEventListener('keydown', e => {
-  if (e.key !== ' ' && e.key !== 'Enter') return;
   if (e.repeat || e.ctrlKey || e.altKey || e.metaKey) return;
+  if (e.key === 'm' || e.key === 'M') { setSound(!soundOn); return; }
+  if (e.key !== ' ' && e.key !== 'Enter') return;
+  if (e.target === soundBtn) return;   // Ton-Schalter normal bedienen
   e.preventDefault();
   randomize();
 });
+
+// Start: jeder Kreis bekommt ein zufälliges Bild
+showRandomImages();
 </script>
 </body>
 </html>
