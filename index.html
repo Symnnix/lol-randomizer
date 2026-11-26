@@ -1,0 +1,504 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LoL Rollen-Randomizer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;800&display=swap" rel="stylesheet">
+<style>
+  /* ===== Hier anpassen ===== */
+  :root {
+    /* Bildausschnitt pro Rolle (object-position: x y) */
+    --pos-top:    50% 45%;
+    --pos-jungle: 45% 50%;
+    --pos-mid:    50% 50%;
+    --pos-adc:    50% 70%;
+    --pos-supp:   50% 50%;
+
+    /* Kreisgröße relativ zur Kartenbreite */
+    --circle: 15%;
+
+    /* Karte: so groß wie möglich, Button und Ergebnis passen noch drunter */
+    --map-size: min(92vw, 88vh, calc(100vh - 10.5rem));
+
+    /* Farben im Stil des LoL-Clients */
+    --bg-0: #010A13;
+    --bg-1: #0A1428;
+    --gold: #C8AA6E;
+    --gold-dark: #785A28;
+    --gold-text: #F0E6D2;
+    --teal: #0AC8B9;
+    --grey: #5B5A56;
+  }
+
+  /* Kreis-Mittelpunkte in Prozent der Karte (x / y) */
+  .role[data-role="top"]    { --x: 14%; --y: 14%; --img-pos: var(--pos-top); }
+  .role[data-role="jungle"] { --x: 28%; --y: 52%; --img-pos: var(--pos-jungle); }
+  .role[data-role="mid"]    { --x: 50%; --y: 50%; --img-pos: var(--pos-mid); }
+  .role[data-role="adc"]    { --x: 88%; --y: 75%; --img-pos: var(--pos-adc); }
+  .role[data-role="supp"]   { --x: 75%; --y: 88%; --img-pos: var(--pos-supp); }
+  /* ========================= */
+
+  * { box-sizing: border-box; }
+
+  html, body { margin: 0; height: 100%; }
+
+  body {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: .8rem;
+    padding: .8rem 0;
+    background: var(--bg-0);
+    color: var(--gold-text);
+    font-family: "Segoe UI", system-ui, sans-serif;
+    overflow-x: hidden;
+  }
+
+  /* Hintergrund: dieselbe Karte, dunkel und unscharf.
+     map.jpg liegt oben, map.png ist der Ersatz, falls map.jpg fehlt. */
+  body::before, body::after {
+    content: "";
+    position: fixed;
+    z-index: -1;
+  }
+  body::before {
+    inset: -60px;
+    background: url("assets/map.jpg") center / cover no-repeat,
+                url("assets/map.png") center / cover no-repeat;
+    filter: blur(22px) brightness(.28) saturate(.7);
+  }
+  body::after {
+    inset: 0;
+    background: radial-gradient(ellipse at center, transparent 30%, rgba(1, 10, 19, .85) 100%);
+  }
+
+  h1 {
+    margin: 0;
+    font-family: "Cinzel", serif;
+    font-weight: 700;
+    font-size: 1.05rem;
+    letter-spacing: .28em;
+    text-transform: uppercase;
+    color: var(--gold);
+    text-shadow: 0 0 12px rgba(200, 170, 110, .35);
+  }
+
+  /* ----- Karte ----- */
+  .map {
+    position: relative;
+    width: var(--map-size);
+    height: var(--map-size);
+    flex: none;
+    border: 2px solid var(--gold-dark);
+    background: url("assets/map.jpg") center / cover no-repeat,
+                url("assets/map.png") center / cover no-repeat;
+    box-shadow:
+      0 0 0 1px var(--bg-0),
+      0 0 0 4px rgba(200, 170, 110, .18),
+      0 20px 60px rgba(0, 0, 0, .7),
+      inset 0 0 calc(var(--map-size) * .08) rgba(1, 10, 19, .55);
+  }
+
+  /* ----- Rollen-Kreise ----- */
+  .role {
+    --scale: 1;
+    position: absolute;
+    left: var(--x);
+    top: var(--y);
+    width: var(--circle);
+    aspect-ratio: 1;
+    transform: translate(-50%, -50%) scale(var(--scale));
+    transition: transform .12s ease-out;
+    z-index: 1;
+  }
+
+  .ring {
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    overflow: hidden;
+    background: var(--bg-1);
+    border: calc(var(--map-size) * .005) solid rgba(200, 170, 110, .45);
+    box-shadow: 0 4px 14px rgba(0, 0, 0, .65);
+    transition: border-color .12s, box-shadow .12s;
+  }
+
+  .ring img {
+    width: 100%;
+    height: 100%;
+    display: block;
+    object-fit: cover;
+    object-position: var(--img-pos);
+    /* Ruhezustand: grau und abgedunkelt */
+    filter: grayscale(1) brightness(.45);
+    transition: filter .12s;
+  }
+
+  /* Platzhalter, falls das Bild fehlt */
+  .placeholder {
+    display: none;
+    position: absolute;
+    inset: 0;
+    place-items: center;
+    background: radial-gradient(circle at 50% 35%, #1E2D3D, var(--bg-1) 70%);
+    font-family: "Cinzel", serif;
+    font-weight: 700;
+    font-size: calc(var(--map-size) * .02);
+    letter-spacing: .08em;
+    color: var(--grey);
+    transition: color .12s;
+  }
+  .role.missing img { display: none; }
+  .role.missing .placeholder { display: grid; }
+
+  .label {
+    position: absolute;
+    left: 50%;
+    top: calc(100% - var(--map-size) * .014);  /* sitzt leicht auf dem Kreisrand */
+    transform: translateX(-50%);
+    padding: .15em .6em;
+    white-space: nowrap;
+    font-family: "Cinzel", serif;
+    font-weight: 700;
+    font-size: calc(var(--map-size) * .019);
+    letter-spacing: .12em;
+    color: var(--gold-text);
+    background: rgba(1, 10, 19, .8);
+    border: 1px solid rgba(200, 170, 110, .4);
+    transition: color .12s, border-color .12s;
+  }
+
+  .badge {
+    display: none;
+    position: absolute;
+    top: -4%;
+    right: -4%;
+    width: 30%;
+    aspect-ratio: 1;
+    border-radius: 50%;
+    place-items: center;
+    font-family: "Cinzel", serif;
+    font-weight: 800;
+    font-size: calc(var(--map-size) * .024);
+    line-height: 1;
+    color: var(--bg-0);
+    border: 2px solid var(--bg-0);
+    z-index: 2;
+  }
+
+  /* Puls-Ring beim Einrasten */
+  .role::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    pointer-events: none;
+  }
+
+  /* Highlight während des Rollens */
+  .role.hl { --scale: 1.08; z-index: 3; }
+  .role.hl .ring {
+    border-color: var(--gold-text);
+    box-shadow: 0 0 18px 4px rgba(240, 230, 210, .55);
+  }
+  .map[data-phase="2"] .role.hl .ring {
+    border-color: #A5F2EA;
+    box-shadow: 0 0 18px 4px rgba(10, 200, 185, .55);
+  }
+
+  /* Farbig: Highlight und beide Ergebnisse */
+  .role.hl img, .role.first img, .role.second img { filter: none; }
+  .role.hl .placeholder { color: var(--gold-text); }
+
+  /* Hauptrolle: Gold */
+  .role.first { --scale: 1.12; z-index: 2; }
+  .role.first .ring {
+    border-color: var(--gold);
+    box-shadow: 0 0 0 2px var(--gold-dark), 0 0 26px 8px rgba(200, 170, 110, .7);
+  }
+  .role.first .badge {
+    display: grid;
+    background: linear-gradient(180deg, #F0E6D2, var(--gold) 55%, var(--gold-dark));
+  }
+  .role.first .badge::before { content: "1"; }
+  .role.first .label { color: var(--gold); border-color: var(--gold); }
+  .role.first .placeholder { color: var(--gold); }
+  .role.first::before { animation: pulse-gold .7s ease-out; }
+
+  /* Zweitrolle: Türkis */
+  .role.second { --scale: 1.06; z-index: 2; }
+  .role.second .ring {
+    border-color: var(--teal);
+    box-shadow: 0 0 0 2px #005A82, 0 0 26px 8px rgba(10, 200, 185, .65);
+  }
+  .role.second .badge {
+    display: grid;
+    background: linear-gradient(180deg, #A5F2EA, var(--teal) 55%, #0A7A72);
+  }
+  .role.second .badge::before { content: "2"; }
+  .role.second .label { color: var(--teal); border-color: var(--teal); }
+  .role.second .placeholder { color: var(--teal); }
+  .role.second::before { animation: pulse-teal .7s ease-out; }
+
+  @keyframes pulse-gold {
+    from { box-shadow: 0 0 0 0 rgba(200, 170, 110, .9); }
+    to   { box-shadow: 0 0 0 calc(var(--map-size) * .05) rgba(200, 170, 110, 0); }
+  }
+  @keyframes pulse-teal {
+    from { box-shadow: 0 0 0 0 rgba(10, 200, 185, .9); }
+    to   { box-shadow: 0 0 0 calc(var(--map-size) * .05) rgba(10, 200, 185, 0); }
+  }
+
+  /* ----- Button im Stil des Play-Buttons ----- */
+  .play {
+    position: relative;
+    min-width: min(19rem, 80vw);
+    padding: .7em 2.4em;
+    font-family: "Cinzel", serif;
+    font-weight: 700;
+    font-size: 1.3rem;
+    letter-spacing: .18em;
+    color: var(--gold-text);
+    cursor: pointer;
+    background: linear-gradient(180deg, #1E2328 0%, #0A1428 55%, #0A323C 100%);
+    border: 2px solid transparent;
+    border-image: linear-gradient(180deg, var(--gold) 0%, var(--gold-dark) 100%) 1;
+    box-shadow: inset 0 0 0 1px rgba(10, 200, 185, .25), inset 0 -10px 18px rgba(10, 200, 185, .12), 0 6px 20px rgba(0, 0, 0, .6);
+    transition: color .15s, background .15s, box-shadow .15s, filter .15s;
+  }
+  .play:hover:not(:disabled) {
+    color: #fff;
+    border-image: linear-gradient(180deg, #F0E6D2 0%, var(--gold) 100%) 1;
+    background: linear-gradient(180deg, #1E2D37 0%, #0A2338 55%, #0A4650 100%);
+    box-shadow: inset 0 0 0 1px rgba(10, 200, 185, .5), inset 0 -10px 22px rgba(10, 200, 185, .25), 0 0 22px rgba(200, 170, 110, .45);
+  }
+  .play:active:not(:disabled) { transform: translateY(1px); }
+  .play:focus-visible { outline: 2px solid var(--teal); outline-offset: 4px; }
+  .play:disabled {
+    cursor: default;
+    color: var(--grey);
+    border-image: linear-gradient(180deg, #3C3C41, #1E2328) 1;
+    background: linear-gradient(180deg, #1E2328, #010A13);
+    box-shadow: 0 6px 20px rgba(0, 0, 0, .6);
+  }
+
+  /* ----- Ergebniszeile ----- */
+  .result {
+    margin: 0;
+    font-size: 1.05rem;
+    letter-spacing: .03em;
+    color: #A09B8C;
+    text-align: center;
+  }
+  .result strong {
+    font-family: "Cinzel", serif;
+    font-weight: 700;
+    letter-spacing: .06em;
+  }
+  #res-first  { color: var(--gold); }
+  #res-second { color: var(--teal); }
+  .result .sep { margin: 0 .6em; color: var(--gold-dark); }
+</style>
+</head>
+<body>
+
+<h1>Rollen-Randomizer</h1>
+
+<div class="map" id="map">
+  <!-- onerror direkt am Bild, damit auch sehr schnelle Ladefehler erkannt werden -->
+  <div class="role" data-role="top">
+    <div class="ring">
+      <img src="assets/top.jpg" alt="Top" onerror="this.closest('.role').classList.add('missing')">
+      <span class="placeholder">TOP</span>
+    </div>
+    <span class="badge"></span>
+    <span class="label">TOP</span>
+  </div>
+  <div class="role" data-role="jungle">
+    <div class="ring">
+      <img src="assets/jungle.webp" alt="Jungle" onerror="this.closest('.role').classList.add('missing')">
+      <span class="placeholder">JUNGLE</span>
+    </div>
+    <span class="badge"></span>
+    <span class="label">JUNGLE</span>
+  </div>
+  <div class="role" data-role="mid">
+    <div class="ring">
+      <img src="assets/mid.jpg" alt="Mid" onerror="this.closest('.role').classList.add('missing')">
+      <span class="placeholder">MID</span>
+    </div>
+    <span class="badge"></span>
+    <span class="label">MID</span>
+  </div>
+  <div class="role" data-role="adc">
+    <div class="ring">
+      <img src="assets/adc.jpg" alt="ADC" onerror="this.closest('.role').classList.add('missing')">
+      <span class="placeholder">ADC</span>
+    </div>
+    <span class="badge"></span>
+    <span class="label">ADC</span>
+  </div>
+  <div class="role" data-role="supp">
+    <div class="ring">
+      <img src="assets/supp.jpg" alt="Support" onerror="this.closest('.role').classList.add('missing')">
+      <span class="placeholder">SUPPORT</span>
+    </div>
+    <span class="badge"></span>
+    <span class="label">SUPPORT</span>
+  </div>
+</div>
+
+<button class="play" id="roll" type="button">RANDOMIZE</button>
+
+<p class="result" aria-live="polite">
+  Hauptrolle: <strong id="res-first">–</strong><span class="sep">|</span>Zweitrolle: <strong id="res-second">–</strong>
+</p>
+
+<script>
+'use strict';
+
+// ================= Konfiguration =================
+const ROLES = ['top', 'jungle', 'mid', 'adc', 'supp'];
+const ROLE_NAMES = { top: 'Top', jungle: 'Jungle', mid: 'Mid', adc: 'ADC', supp: 'Support' };
+
+const TIMING = {
+  fastMs: 60,        // erster Sprung
+  slowMs: 350,       // letzter Sprung
+  minTotalMs: 2000,  // Gesamtdauer eines Rolls (Untergrenze)
+  maxTotalMs: 2500,  // Gesamtdauer eines Rolls (Obergrenze)
+  pauseMs: 600       // Pause zwischen Haupt- und Zweitrolle
+};
+
+// ================= Zufallslogik (kein DOM) =================
+
+// Gleichverteilte Ganzzahl 0 … n-1 über crypto.getRandomValues, ohne Modulo-Verzerrung
+function randomInt(n) {
+  const range = 0x100000000;               // 2^32
+  const limit = range - (range % n);       // alles darüber wird verworfen
+  const buf = new Uint32Array(1);
+  do { crypto.getRandomValues(buf); } while (buf[0] >= limit);
+  return buf[0] % n;
+}
+
+// Ein Element gleichverteilt aus der Liste wählen
+function pickRandom(list) {
+  return list[randomInt(list.length)];
+}
+
+// Wartezeiten zwischen den Sprüngen: quadratisch von schnell nach langsam.
+// Aus allen Sprung-Anzahlen, deren Summe im Zielbereich liegt, wird eine zufällig gewählt.
+function buildDelays(t = TIMING) {
+  const curve = n => Array.from({ length: n }, (_, i) =>
+    Math.round(t.fastMs + (t.slowMs - t.fastMs) * (i / (n - 1)) ** 2));
+  const sum = arr => arr.reduce((a, b) => a + b, 0);
+
+  const options = [];
+  for (let n = 4; n <= 40; n++) {
+    const total = sum(curve(n));
+    if (total >= t.minTotalMs && total <= t.maxTotalMs) options.push(n);
+  }
+  return curve(pickRandom(options));
+}
+
+// Sprungfolge: zufällig, nie zweimal derselbe Kreis direkt hintereinander,
+// der letzte Eintrag ist immer das Ergebnis.
+function buildJumpSequence(candidates, result, length) {
+  const seq = [];
+  let prev = null;
+  for (let i = 0; i < length - 1; i++) {
+    const beforeLast = (i === length - 2);
+    const options = candidates.filter(r => r !== prev && !(beforeLast && r === result));
+    prev = pickRandom(options);
+    seq.push(prev);
+  }
+  seq.push(result);
+  return seq;
+}
+
+// Kompletter Plan für einen Roll: Ergebnis zuerst festlegen, dann Animation dazu bauen
+function planRoll(candidates) {
+  const result = pickRandom(candidates);
+  const delays = buildDelays();
+  const sequence = buildJumpSequence(candidates, result, delays.length + 1);
+  return { result, delays, sequence };
+}
+
+// ================= DOM / Animation =================
+const mapEl = document.getElementById('map');
+const button = document.getElementById('roll');
+const resFirst = document.getElementById('res-first');
+const resSecond = document.getElementById('res-second');
+const roleEls = Object.fromEntries(
+  ROLES.map(r => [r, mapEl.querySelector(`.role[data-role="${r}"]`)])
+);
+
+let rolling = false;
+
+const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+
+// Highlight auf genau einen Kreis setzen (null = keiner)
+function setHighlight(role) {
+  for (const r of ROLES) roleEls[r].classList.toggle('hl', r === role);
+}
+
+function resetMarks() {
+  for (const r of ROLES) roleEls[r].classList.remove('hl', 'first', 'second');
+  resFirst.textContent = '…';
+  resSecond.textContent = '…';
+}
+
+// Spielt einen fertigen Plan ab: erster Kreis sofort, dann immer langsamer.
+// Der letzte Sprung landet auf dem Ergebnis, danach rastet es direkt ein.
+async function playRoll(plan) {
+  setHighlight(plan.sequence[0]);
+  for (let i = 1; i < plan.sequence.length; i++) {
+    await sleep(plan.delays[i - 1]);
+    setHighlight(plan.sequence[i]);
+  }
+  setHighlight(null);
+}
+
+async function randomize() {
+  if (rolling) return;
+  rolling = true;
+  button.disabled = true;
+  resetMarks();
+
+  // 1. Hauptrolle aus allen 5
+  mapEl.dataset.phase = '1';
+  const first = planRoll(ROLES);
+  await playRoll(first);
+  roleEls[first.result].classList.add('first');
+  resFirst.textContent = ROLE_NAMES[first.result];
+
+  await sleep(TIMING.pauseMs);
+
+  // 2. Zweitrolle aus den 4 übrigen
+  mapEl.dataset.phase = '2';
+  const second = planRoll(ROLES.filter(r => r !== first.result));
+  await playRoll(second);
+  roleEls[second.result].classList.add('second');
+  resSecond.textContent = ROLE_NAMES[second.result];
+
+  delete mapEl.dataset.phase;
+  rolling = false;
+  button.disabled = false;
+}
+
+button.addEventListener('click', randomize);
+
+// Leertaste und Enter starten ebenfalls (ohne Doppelauslösung über den Button)
+document.addEventListener('keydown', e => {
+  if (e.key !== ' ' && e.key !== 'Enter') return;
+  if (e.repeat || e.ctrlKey || e.altKey || e.metaKey) return;
+  e.preventDefault();
+  randomize();
+});
+</script>
+</body>
+</html>
